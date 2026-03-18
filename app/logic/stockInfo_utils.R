@@ -1,42 +1,40 @@
 box::use(
   bslib[card_body, card],
   bsicons[bs_icon],
-  echarts4r[e_dims, e_y_axis, e_x_axis,e_show_loading,e_toolbox,e_grid,e_datazoom,e_area, e_candle, echarts4rOutput, e_legend, e_title, e_tooltip, e_line, e_charts],
+  echarts4r[e_dims, e_y_axis, e_x_axis, e_show_loading, e_toolbox, e_grid, e_datazoom, e_area, e_candle, echarts4rOutput, e_legend, e_title, e_tooltip, e_line, e_charts],
   TTR[stockSymbols],
   dplyr[filter, select],
   quantmod[getSymbols, Cl, dailyReturn],
   data.table[data.table],
-  #spsComps[addLoader],
-  shiny[getShinyOption, shinyOptions, tags,div, HTML, textOutput, uiOutput],
-  shinyWidgets[switchInput,],
-  lubridate[ years, `%m-%`],
-  rvest[html_nodes, html_text, read_html, html_table, ],
-  reactable[reactable, reactableTheme,colDef],
+  shiny[getShinyOption, shinyOptions, tags, div, HTML, textOutput, uiOutput],
+  shinyWidgets[switchInput],
+  lubridate[years, `%m-%`],
+  rvest[html_node, html_nodes, html_text, html_attr, read_html, html_table],
+  httr[GET, POST, handle, user_agent, add_headers, timeout, http_error, status_code, content],
+  reactable[reactable, reactableTheme, colDef],
   utils[tail],
 )
-box::use(app / logic / general_utils[tryCatch_toaster],
-         app / styles / colors[custom_blue])
+box::use(
+  app/logic/general_utils[tryCatch_toaster],
+  app/styles/colors[custom_blue],
+)
 
 #' @export
 get_symbols <- function(){
 
   SETT <- getShinyOption("SETTINGS")
 
-  last <- as.Date(SETT$symbols$last_update)
-  time_passed <-  Sys.Date() - last
-  symbols <- NULL
+  last       <- as.Date(SETT$symbols$last_update)
+  time_passed <- Sys.Date() - last
+  symbols    <- NULL
 
-  if(time_passed > 1){
-
+  if (time_passed > 1) {
     tryCatch_toaster({
-
-    symbols <- TTR::stockSymbols(exchange = "NASDAQ")[, c(1, 2, 13, 8, 11)]
-    saveRDS(symbols, file = "app/files/symbols.rds")
-
-    SETT$symbols$last_update <- as.character(Sys.Date())
-    shinyOptions(SETTINGS = SETT)
+      symbols <- stockSymbols(exchange = "NASDAQ")[, c(1, 2, 13, 8, 11)]
+      saveRDS(symbols, file = "app/files/symbols.rds")
+      SETT$symbols$last_update <- as.character(Sys.Date())
+      shinyOptions(SETTINGS = SETT)
     })
-
   } else {
     symbols <- readRDS(file = "app/files/symbols.rds")
   }
@@ -50,30 +48,26 @@ get_data <- function(ticker, from){
   message(sprintf("Getting '%s' data", ticker))
   SETT <- getShinyOption("SETTINGS")
 
-  last <- as.Date(SETT$symbols$last_update_data$date)
-  time_passed <-  Sys.Date() - last
+  last        <- as.Date(SETT$symbols$last_update_data$date)
+  time_passed <- Sys.Date() - last
   last_ticker <- SETT$symbols$last_update_data$ticker
-  data <- NULL
+  data        <- NULL
 
   if (time_passed > 1 || ticker != last_ticker) {
-
     tryCatch_toaster({
-
-    data <- getSymbols(
-      Symbols = ticker,
-      src = "yahoo",
-      auto.assign = FALSE,
-      from = from
-    )
-    saveRDS(data, file = "app/files/cached_data.rds")
-
-    SETT$symbols$last_update_data$date <- as.character(Sys.Date())
-    SETT$symbols$last_update_data$ticker <- as.character(ticker)
-    shinyOptions(SETTINGS = SETT)
+      data <- getSymbols(
+        Symbols     = ticker,
+        src         = "yahoo",
+        auto.assign = FALSE,
+        from        = from
+      )
+      saveRDS(data, file = "app/files/cached_data.rds")
+      SETT$symbols$last_update_data$date   <- as.character(Sys.Date())
+      SETT$symbols$last_update_data$ticker <- as.character(ticker)
+      shinyOptions(SETTINGS = SETT)
     })
-
   } else {
-    message(sprintf("Reading cached '%s' data",ticker))
+    message(sprintf("Reading cached '%s' data", ticker))
     data <- readRDS(file = "app/files/cached_data.rds")
   }
 
@@ -83,30 +77,26 @@ get_data <- function(ticker, from){
 #' @export
 get_sp500 <- function(){
 
-
   SETT <- getShinyOption("SETTINGS")
 
-  last <- as.Date(SETT$symbols$last_update_sp500)
-  time_passed <-  Sys.Date() - last
+  last        <- as.Date(SETT$symbols$last_update_sp500)
+  time_passed <- Sys.Date() - last
 
   if (time_passed > 1) {
-    url <- "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
+    url     <- "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
     symbols <- NULL
 
     tryCatch_toaster({
+      message("Fetching SP500 list")
+      webpage    <- read_html(url)
+      sp500_table <- webpage |>
+        html_nodes(xpath = '//*[@id="constituents"]') |>
+        html_table(fill = TRUE)
 
-    message("Fetching SP500 list")
-    webpage <- read_html(url)
-    sp500_table <- webpage |>
-      html_nodes(xpath = '//*[@id="constituents"]') |>
-      html_table(fill = TRUE)
-
-    symbols <- sp500_table[[1]][,1]
-    saveRDS(symbols, file = "app/files/symbolsSP500.rds")
-
-    SETT$symbols$last_update_sp500 <- as.character(Sys.Date())
-    shinyOptions(SETTINGS = SETT)
-
+      symbols <- sp500_table[[1]][, 1]
+      saveRDS(symbols, file = "app/files/symbolsSP500.rds")
+      SETT$symbols$last_update_sp500 <- as.character(Sys.Date())
+      shinyOptions(SETTINGS = SETT)
     })
   } else {
     symbols <- readRDS(file = "app/files/symbolsSP500.rds")
@@ -125,98 +115,216 @@ make_list <- function(dt){
   s <- dt$Symbol
   n <- dt$Name
   n <- sub("-.*", "", n)
-  n <- paste(s,n, sep = " - ")
+  n <- paste(s, n, sep = " - ")
   names(s) <- n
   s
 }
 
 #' @export
-#' x years ago
 years_ago <- function(years) {
   date <- Sys.Date()
-  date_x_years_ago <- date %m-% years(years)
-  return(date_x_years_ago)
+  date %m-% years(years)
 }
 
 #' @export
 months_ago <- function(months) {
   date <- Sys.Date()
-  date_x_months_ago <- date %m-% months(months)
-  return(date_x_months_ago)
+  date %m-% months(months)
 }
 
 #' @export
-#' Scraper for yahoo finance infos
-scrape_yahoo_finance <- function(ticker) {
-  # Define the URL for Yahoo Finance
-  url <- paste0("https://finance.yahoo.com/quote/", ticker)
-  message(sprintf('Scraping "%s"',url))
-  webpage <- NULL
+scrape_yahoo_finance <- function(ticker, timeout = 15, retries = 2) {
 
-# Define the XPath expressions for scraping
-scrapelist <- list(
-  description = c(
-    '//p[@class="yf-1600hyr" and not(@title)]',
-    '//p[@class="yf-1ja4ll8" and not(@title)]',
-    '//p[@class="yf-1xq2z91" and not(@title)]'
-  ),
-  stockPrice = '//*[@data-field="regularMarketOpen"]',
-  fiftyTwoWeekRange = '//*[@data-field="fiftyTwoWeekRange"]',
-  volume = '//*[@data-field="regularMarketVolume"]',
-  averageVolume  = '//*[@data-field="averageVolume"]',
-  peRatioTTM = '//li[span[contains(text(), "PE Ratio (TTM)")]]//fin-streamer[@data-field="trailingPE"]/@data-value',
-  epsTTM = '//li[span[contains(text(), "EPS (TTM)")]]//fin-streamer[@data-field="trailingPE"]/@data-value',
-  earningsDate = '//li[.//span[contains(text(),"Earnings Date")]]//span[contains(@class, "value")]',
-  marketCap = '//li[p[contains(text(), "Market Cap")]]/p[@class="value yf-i6syij"]',
-  enterpriseValue = '//li[p[contains(text(), "Enterprise Value ")]]/p[@class="value yf-i6syij"]',
-  trailingPE = '//li[p[contains(text(), "Trailing P/E ")]]/p[@class="value yf-i6syij"]',
-  forwardPE = '//li[p[contains(text(), "Forward P/E ")]]/p[@class="value yf-i6syij"]',
-  pegRatio = '//li[p[contains(text(), "PEG Ratio (5yr expected) ")]]/p[@class="value yf-i6syij"]',
-  priceSale = '//li[p[contains(text(), "Price/Sales  (ttm)")]]/p[@class="value yf-i6syij"]',
-  priceBook = '//li[p[contains(text(), "Price/Book  (mrq)")]]/p[@class="value yf-i6syij"]',
-  enterpriseValueRevenue = '//li[p[contains(text(), "Enterprise Value/Revenue ")]]/p[@class="value yf-i6syij"]',
-  enterpriseValueEBITDA = '//li[p[contains(text(), "Enterprise Value/EBITDA ")]]/p[@class="value yf-i6syij"]',
-  profitMargin = '//li[p[contains(text(), "Profit Margin")]]/p[@class="value yf-lc8fp0"]',
-  returnOnAssets = '//li[p[contains(text(), "Return on Assets  (ttm)")]]/p[@class="value yf-lc8fp0"]',
-  returnOnEquity = '//li[p[contains(text(), "Return on Equity  (ttm)")]]/p[@class="value yf-lc8fp0"]',
-  revenue = '//li[p[contains(text(), "Revenue  (ttm)")]]/p[@class="value yf-lc8fp0"]',
-  netIncome = '//li[p[contains(text(), "Net Income Avi to Common  (ttm)")]]/p[@class="value yf-lc8fp0"]',
-  dilutedEPS = '//li[p[contains(text(), "Diluted EPS  (ttm)")]]/p[@class="value yf-lc8fp0"]',
-  totalCash = '//li[p[contains(text(), "Total Cash  (mrq)")]]/p[@class="value yf-lc8fp0"]',
-  totalDebtEquity = '//li[p[contains(text(), "Total Debt/Equity  (mrq)")]]/p[@class="value yf-lc8fp0"]',
-  leveredFreeCashFlow = '//li[p[contains(text(), "Levered Free Cash Flow  (ttm)")]]/p[@class="value yf-lc8fp0"]'
-)
+  ticker <- toupper(trimws(ticker))
+  url    <- paste0("https://finance.yahoo.com/quote/", ticker)
+  message(sprintf('[yahoo] Fetching "%s"', url))
 
-# Function to extract and clean the data
-extract_data <- function(xpath) {
-  # Support either single string or vector of XPaths
-  for (xp in xpath) {
-    data <- webpage |>
-      html_nodes(xpath = xp) |>
-      html_text()
+  ua <- user_agent(paste0(
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) ",
+    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+  ))
 
-    data <- gsub(",", "", data)
-
-    if (length(data) > 0 && !is.na(data[1]) && data[1] != "") {
-      return(data[1])
-    }
+  # ── Helpers ───────────────────────────────────────────────────────────────
+  clean <- function(x) {
+    x <- trimws(gsub(",", "", x))
+    if (x %in% c("N/A", "--", "", "\u221e")) NA_character_ else x
   }
-  return(NA)
-}
 
-ret <- NULL
-tryCatch_toaster({
-  webpage <- read_html(url)
-  ret <- lapply(scrapelist, extract_data)
-})
+  data_field <- function(field) {
+    xp   <- sprintf('//fin-streamer[@data-field="%s"]', field)
+    node <- html_node(webpage, xpath = xp)
+    if (is.na(node)) return(NA_character_)
+    val  <- html_attr(node, "data-value")
+    if (is.na(val) || !nzchar(trimws(val))) val <- trimws(html_text(node))
+    clean(val)
+  }
 
-return(ret)
+  stat_by_title <- function(title) {
+    xp   <- sprintf('//li[span[@title="%s"]]/span[contains(@class,"value")]', title)
+    node <- html_node(webpage, xpath = xp)
+    if (is.na(node)) return(NA_character_)
+    fs   <- html_node(node, xpath = './/fin-streamer[@data-value]')
+    val  <- if (!is.na(fs)) html_attr(fs, "data-value") else html_text(node)
+    clean(val)
+  }
+
+  stat_by_label <- function(label) {
+    xp   <- sprintf('//li[p[contains(text(),"%s")]]/p[contains(@class,"value")]', label)
+    node <- html_node(webpage, xpath = xp)
+    if (is.na(node)) return(NA_character_)
+    clean(html_text(node))
+  }
+
+  # ── Fetch with GDPR consent POST ─────────────────────────────────────────
+  fetch_page <- function() {
+    h     <- handle("https://finance.yahoo.com")
+    r1    <- GET(url, ua, timeout(timeout), handle = h)
+    html1 <- content(r1, "text", encoding = "UTF-8")
+
+    if (grepl("fin-streamer", html1))
+      return(read_html(html1))
+
+    # Parse hidden fields from the consent form
+    cp         <- read_html(html1)
+    session_id <- html_attr(html_node(cp, xpath = '//input[@name="sessionId"]'),    "value")
+    csrf_token <- html_attr(html_node(cp, xpath = '//input[@name="csrfToken"]'),    "value")
+    done_url   <- html_attr(html_node(cp, xpath = '//input[@name="originalDoneUrl"]'), "value")
+    namespace  <- html_attr(html_node(cp, xpath = '//input[@name="namespace"]'),    "value")
+
+    if (is.na(session_id))
+      stop("Could not extract sessionId from Yahoo consent page.")
+
+    # POST "Accept all"
+    POST(
+      url    = paste0("https://consent.yahoo.com/v2/collectConsent?sessionId=", session_id),
+      handle = h,
+      ua,
+      add_headers(
+        "Content-Type" = "application/x-www-form-urlencoded",
+        "Origin"       = "https://consent.yahoo.com",
+        "Referer"      = r1$url
+      ),
+      timeout(timeout),
+      body = list(
+        csrfToken       = csrf_token,
+        sessionId       = session_id,
+        originalDoneUrl = done_url,
+        namespace       = namespace,
+        agree           = "agree"
+      ),
+      encode = "form"
+    )
+
+    # Fetch real page with consented cookie jar
+    r3    <- GET(url, ua, timeout(timeout), handle = h)
+    html3 <- content(r3, "text", encoding = "UTF-8")
+
+    if (!grepl("fin-streamer", html3))
+      stop(sprintf(
+        "No financial data found for '%s' after consent — invalid ticker or Yahoo layout changed.",
+        ticker
+      ))
+
+    read_html(html3)
+  }
+
+  # ── Retry loop ────────────────────────────────────────────────────────────
+  fetch_with_retries <- function() {
+    last_error <- NULL
+    for (attempt in seq_len(retries + 1)) {
+      tryCatch({
+        return(fetch_page())
+      }, error = function(e) {
+        last_error <<- e
+        if (attempt <= retries) {
+          message(sprintf("[yahoo] Attempt %d failed (%s), retrying...", attempt, conditionMessage(e)))
+          Sys.sleep(2^attempt)
+        }
+      })
+    }
+    stop(last_error$message)
+  }
+
+  # ── Main ──────────────────────────────────────────────────────────────────
+  webpage <- NULL
+  ret     <- NULL
+
+  tryCatch_toaster({
+
+    webpage <- fetch_with_retries()
+
+    ret <- list(
+      ticker = ticker,
+
+      # Price panel
+      regularMarketPrice   = data_field("regularMarketPrice"),
+      previousClose        = data_field("regularMarketPreviousClose"),
+      open                 = data_field("regularMarketOpen"),
+      dayRange             = data_field("regularMarketDayRange"),
+      fiftyTwoWeekRange    = data_field("fiftyTwoWeekRange"),
+      volume               = data_field("regularMarketVolume"),
+      averageVolume        = data_field("averageVolume"),
+      marketCap            = data_field("marketCap"),
+      targetMeanPrice      = data_field("targetMeanPrice"),
+
+      # Summary table
+      bid                  = stat_by_title("Bid"),
+      ask                  = stat_by_title("Ask"),
+      beta                 = stat_by_title("Beta (5Y Monthly)"),
+      peRatioTTM           = stat_by_title("PE Ratio (TTM)"),
+      epsTTM               = stat_by_title("EPS (TTM)"),
+      earningsDate         = stat_by_title("Earnings Date (est.)"),
+      forwardDividendYield = stat_by_title("Forward Dividend & Yield"),
+      exDividendDate       = stat_by_title("Ex-Dividend Date"),
+      oneYearTargetEst     = stat_by_title("1y Target Est"),
+
+      # Valuation Measures
+      enterpriseValue        = stat_by_label("Enterprise Value"),
+      trailingPE             = stat_by_label("Trailing P/E"),
+      forwardPE              = stat_by_label("Forward P/E"),
+      pegRatio               = stat_by_label("PEG Ratio (5yr expected)"),
+      priceSale              = stat_by_label("Price/Sales"),
+      priceBook              = stat_by_label("Price/Book"),
+      enterpriseValueRevenue = stat_by_label("Enterprise Value/Revenue"),
+      enterpriseValueEBITDA  = stat_by_label("Enterprise Value/EBITDA"),
+
+      # Financial Highlights
+      profitMargin        = stat_by_label("Profit Margin"),
+      returnOnAssets      = stat_by_label("Return on Assets"),
+      returnOnEquity      = stat_by_label("Return on Equity"),
+      revenue             = {
+        xp   <- '//li[p[starts-with(normalize-space(text()),"Revenue")]]/p[contains(@class,"value")]'
+        node <- html_node(webpage, xpath = xp)
+        if (is.na(node)) NA_character_ else clean(html_text(node))
+      },
+      netIncome           = stat_by_label("Net Income Avi to Common"),
+      dilutedEPS          = stat_by_label("Diluted EPS"),
+      totalCash           = stat_by_label("Total Cash"),
+      totalDebtEquity     = stat_by_label("Total Debt/Equity"),
+      leveredFreeCashFlow = stat_by_label("Levered Free Cash Flow"),
+
+      # Description
+      description = {
+        node <- html_node(webpage, xpath = '//p[@class="yf-z5w6qk"]')
+        if (!is.na(node)) trimws(html_text(node)) else NA_character_
+      }
+    )
+
+    n_found <- sum(!vapply(ret[-1], is.na, logical(1)))
+    n_total <- length(ret) - 1L
+    pct     <- round(100 * n_found / n_total)
+    message(sprintf("[yahoo] %s: %d/%d fields populated (%d%%)", ticker, n_found, n_total, pct))
+    if (pct < 30)
+      warning(sprintf("Very few fields found for '%s' — Yahoo may have changed its HTML.", ticker))
+  })
+
+  ret
 }
 
 #' @export
 make_stat_table <- function(dt, type){
 
-  dt <- switch (
+  dt <- switch(
     type,
     "valuation" = data.table(
       name = c(
@@ -257,61 +365,41 @@ make_stat_table <- function(dt, type){
       )
     ),
     "balancesheet" = data.table(
-      name = c("Total Cash:",
-               "Total Debt/Equity:",
-               "Levered Free Cash Flow:"),
-      value = c(dt$totalCash,
-                dt$totalDebtEquity,
-                dt$leveredFreeCashFlow)
+      name  = c("Total Cash:", "Total Debt/Equity:", "Levered Free Cash Flow:"),
+      value = c(dt$totalCash, dt$totalDebtEquity, dt$leveredFreeCashFlow)
     )
   )
 
-
   dt |> reactable(
     columns = list(
-      name = colDef(
-        style = list(
-          textAlign = "left",
-          fontSize = "0.8rem"
-        )
-      ),
-      value = colDef(
-      style = list(
-        textAlign = "right",
-        fontWeight = "600",
-        fontSize = "0.8rem",
-        lineHeight = "1.375rem"
-      )
-    )),
+      name  = colDef(style = list(textAlign = "left",  fontSize = "0.8rem")),
+      value = colDef(style = list(textAlign = "right", fontWeight = "600",
+                                  fontSize = "0.8rem", lineHeight = "1.375rem"))
+    ),
     compact = TRUE,
-    theme = reactableTheme(
+    theme   = reactableTheme(
       headerStyle = list(display = "none"),
       cellPadding = "4px 8px"
     )
   )
 }
 
-
 #' @export
 make_stock_table <- function(dt){
-
   dt |> reactable(
-    compact = TRUE,
-    showPageInfo = FALSE,
+    compact        = TRUE,
+    showPageInfo   = FALSE,
     paginationType = "simple",
-    #pagination = FALSE,
-    #height = "300px",
-    searchable = TRUE,
-    highlight = TRUE,
-    wrap = FALSE,
-    selection = "single",
-    onClick = "select",
+    searchable     = TRUE,
+    highlight      = TRUE,
+    wrap           = FALSE,
+    selection      = "single",
+    onClick        = "select",
     columns = list(
-      Symbol = colDef(sticky = "left",
-                      width = 80),
-      Name = colDef(width = 350),
+      Symbol           = colDef(sticky = "left", width = 80),
+      Name             = colDef(width = 350),
       Financial.Status = colDef(width = 150),
-      ETF = colDef(width = 80)
+      ETF              = colDef(width = 80)
     ),
     theme = reactableTheme(searchInputStyle = list(width = "100%"))
   )
@@ -319,88 +407,50 @@ make_stock_table <- function(dt){
 
 #' @export
 ui_switch_inputs <- function(id1, id2, idSpinner){
-  div(style = "display: flex; align-items: flex-start; justify-content: flex-start; gap: 15px;",
-      switchInput(
-        inputId = id1,
-        label = "Show list",
-        labelWidth = "100%",
-        size = "mini",
-        inline = T,
-        value = TRUE,
-        onLabel = "✓",
-        offLabel = "✕"
-      ),
-      switchInput(
-        inputId = id2,
-        label = "SP500",
-        labelWidth = "100%",
-        size = "mini",
-        inline = T,
-        value = TRUE,
-        #onStatus = "success",
-        onLabel = "✓",
-        offLabel = "✕"
-      ),
-      div(
-        id = idSpinner,
-        style = "width: 21.33px; height: 21.33px; border-radius: 50%; align-self: flex-start;margin-top: 3.6px;"
-      ),
+  div(
+    style = "display: flex; align-items: flex-start; justify-content: flex-start; gap: 15px;",
+    switchInput(inputId = id1, label = "Show list", labelWidth = "100%",
+                size = "mini", inline = TRUE, value = TRUE,
+                onLabel = "\u2713", offLabel = "\u2715"),
+    switchInput(inputId = id2, label = "SP500", labelWidth = "100%",
+                size = "mini", inline = TRUE, value = TRUE,
+                onLabel = "\u2713", offLabel = "\u2715"),
+    div(id = idSpinner,
+        style = "width: 21.33px; height: 21.33px; border-radius: 50%; align-self: flex-start; margin-top: 3.6px;")
   )
 }
 
 #' @export
-#' custom radiobutton
 customRadioGroupButtons <- function(inputId, choices, selected = NULL, status = "default",
                                     size = "normal", justified = FALSE, individual = FALSE,
                                     checkIcon = NULL, direction = "horizontal", width = NULL,
                                     class = NULL) {
-  # Ensure selected is not NULL, default to the first choice if it is NULL
-  if (is.null(selected) && length(choices) > 0) {
-    selected <- choices[1]
-  }
+  if (is.null(selected) && length(choices) > 0) selected <- choices[1]
 
-  # Generate button HTML
   btns <- lapply(seq_along(choices), function(i) {
-    choiceName <- names(choices)[i]
+    choiceName  <- names(choices)[i]
     if (is.null(choiceName)) choiceName <- choices[i]
     choiceValue <- choices[i]
-    btnClass <- paste0("btn btn-", status, " btn-", size)
+    btnClass    <- paste0("btn btn-", status, " btn-", size)
     if (choiceValue == selected) btnClass <- paste(btnClass, "active")
-    tags$button(
-      type = "button",
-      class = btnClass,
-      `data-value` = choiceValue,
-      choiceName
-    )
+    tags$button(type = "button", class = btnClass, `data-value` = choiceValue, choiceName)
   })
 
-  # Create container div with optional custom class
   containerClass <- "btn-group-container-sw"
-  if (!is.null(class)) {
-    containerClass <- paste(containerClass, class)
-  }
+  if (!is.null(class)) containerClass <- paste(containerClass, class)
 
-  # Create button group div
   btnGroup <- div(
-    class = if (individual) "btn-group-toggle" else "btn-group",
+    class       = if (individual) "btn-group-toggle" else "btn-group",
     `data-toggle` = if (individual) "buttons" else NULL,
-    role = "group",
+    role        = "group",
     btns
   )
 
-  # Add justification if specified
-  if (justified) {
-    btnGroup <- div(class = "btn-group btn-group-justified", role = "group", btns)
-  }
+  if (justified)  btnGroup <- div(class = "btn-group btn-group-justified", role = "group", btns)
+  if (direction == "vertical") btnGroup <- div(class = "btn-group-vertical", role = "group", btns)
 
-  # Add direction if specified
-  if (direction == "vertical") {
-    btnGroup <- div(class = "btn-group-vertical", role = "group", btns)
-  }
-
-  # Return full UI component
   div(
-    id = inputId,
+    id    = inputId,
     class = containerClass,
     style = if (!is.null(width)) paste("width:", width, ";") else NULL,
     btnGroup,
@@ -414,105 +464,70 @@ customRadioGroupButtons <- function(inputId, choices, selected = NULL, status = 
         });
       });"
     )))
-
   )
 }
 
 #' @export
-ui_title_plot_card <- function(titleId,radiobuttonsId, plotId, tickerId){
-
+ui_title_plot_card <- function(titleId, radiobuttonsId, plotId, tickerId){
   card(
-    div(style = "padding-left: 5px;",
-        tags$h5(textOutput(titleId), style = "font-weight: bold; color: #464646; font-size: 20px;"),
-        uiOutput(tickerId)
-        ),
-
-
-      customRadioGroupButtons(
-        inputId = radiobuttonsId,
-        choices = c("3M" = 3,
-                    "6M" = 6,
-                    "1Y" = 12,
-                    "5Y" = (12*5),
-                    "ALL" = (12*10)),
-        selected = 6,
-        size = "xs",
-        direction = "horizontal",
-        individual = TRUE,
-        class = "custom-radio-group"
-      ),
+    div(
+      style = "padding-left: 5px;",
+      tags$h5(textOutput(titleId), style = "font-weight: bold; color: #464646; font-size: 20px;"),
+      uiOutput(tickerId)
+    ),
+    customRadioGroupButtons(
+      inputId    = radiobuttonsId,
+      choices    = c("3M" = 3, "6M" = 6, "1Y" = 12, "5Y" = (12 * 5), "ALL" = (12 * 10)),
+      selected   = 6,
+      size       = "xs",
+      direction  = "horizontal",
+      individual = TRUE,
+      class      = "custom-radio-group"
+    ),
     card_body(
       class = "resize_chart",
-      #max_height = 200,
-      fill = TRUE,
-          echarts4rOutput(plotId)
+      fill  = TRUE,
+      echarts4rOutput(plotId)
     )
   )
 }
 
 #' @export
-
 make_stock_plot <- function(data, slicer, defaultMonth = 6, name){
-  d <- data
+  d <- if (!is.null(slicer)) filter(data, date >= months_ago(slicer)) else
+              filter(data, date >= months_ago(defaultMonth))
 
-  if (!is.null(slicer)) {
-    d  <- filter(data, date >= months_ago(slicer))
-  } else {
-    d  <- filter(data, date >= months_ago(defaultMonth))
-  }
-
-  y_min <- min(d$Low)
-  y_max <- max(d$High)
-  y_range <- y_max - y_min
+  y_min          <- min(d$Low)
+  y_max          <- max(d$High)
+  y_range        <- y_max - y_min
   y_min_adjusted <- y_min - y_range * 0.1
   y_max_adjusted <- y_max + y_range * 0.1
 
   d |>
     e_charts(date) |>
-    e_candle(
-      opening = Open, closing = Close,
-      low = Low, high = High,
-      name = name
-    ) |>
-    #e_dims(height = "100px") |>
+    e_candle(opening = Open, closing = Close, low = Low, high = High, name = name) |>
     e_datazoom(type = "slider") |>
     e_grid(top = 10, right = 5, left = 35) |>
     e_tooltip(trigger = "axis") |>
     e_legend(FALSE) |>
     e_toolbox(show = FALSE) |>
     e_show_loading() |>
-    e_y_axis(min = y_min_adjusted,
-             max = y_max_adjusted,
+    e_y_axis(min = y_min_adjusted, max = y_max_adjusted,
              axisLabel = list(showMinLabel = FALSE, showMaxLabel = FALSE))
 }
 
 #' @export
 make_volume_plot <- function(data, days){
-
   data |>
     tail(days) |>
     e_charts(date) |>
-    e_line(
-      Volume,
-      smooth = TRUE,
-      lineStyle = list(color = custom_blue, width = 0.3),
-      legend = FALSE
-    ) |>
-    e_area(
-      Volume,
-      smooth = TRUE,
-      itemStyle = list(opacity = 0.1),
-      color = custom_blue
-    ) |>
+    e_line(Volume, smooth = TRUE,
+           lineStyle = list(color = custom_blue, width = 0.3), legend = FALSE) |>
+    e_area(Volume, smooth = TRUE, itemStyle = list(opacity = 0.1), color = custom_blue) |>
     e_tooltip(trigger = "axis") |>
     e_x_axis(show = FALSE) |>
     e_y_axis(show = FALSE) |>
-    e_grid(
-      top = 0,
-      right = 0,
-      bottom = 0,
-      left = 0
-    ) |>
+    e_grid(top = 0, right = 0, bottom = 0, left = 0) |>
     e_legend(FALSE)
 }
 
@@ -520,40 +535,26 @@ make_volume_plot <- function(data, days){
 ui_source_link <- function(ticker){
   tags$p(
     "Source: ",
-    tags$a("Yahoo finance",
-           target = "_blank",
-           href = paste0("https://finance.yahoo.com/quote/", ticker),
-           class = "noHover",
-    ),
+    tags$a("Yahoo finance", target = "_blank",
+           href  = paste0("https://finance.yahoo.com/quote/", ticker),
+           class = "noHover"),
     style = "font-size: 12px; color: #7f8189; display: inline;"
   )
 }
 
 #' @export
-get_variation<-function(data){
+get_variation <- function(data){
+  old       <- tail(data, 2)[1, ]$Close
+  new       <- tail(data, 2)[2, ]$Close
+  variation <- round((new - old) / old * 100, 4)
 
-  old <- tail(data,2)[1,]$Close
-  new <- tail(data,2)[2,]$Close
-  variation <- round((new-old)/old*100,4)
-
-  r <- NULL
-
-  if(variation > 0 ){
-    text <- paste0("+ ", abs(variation),"%")
-    r <- list(icon = bs_icon("graph-up-arrow", class = "text-success"),
-              var = text,
-              status = "+")
-  } else if( variation < 0){
-    text <- paste0("- ", abs(variation),"%")
-    r <- list(icon = bs_icon("graph-down-arrow", class = "text-danger"),
-              var = text,
-              status = "-")
+  if (variation > 0) {
+    list(icon = bs_icon("graph-up-arrow", class = "text-success"),
+         var  = paste0("+ ", abs(variation), "%"), status = "+")
+  } else if (variation < 0) {
+    list(icon = bs_icon("graph-down-arrow", class = "text-danger"),
+         var  = paste0("- ", abs(variation), "%"), status = "-")
   } else {
-    r <- list(icon = bs_icon("dash-lg"),
-              var = "-",
-              status = "neutral")
+    list(icon = bs_icon("dash-lg"), var = "-", status = "neutral")
   }
-
-  return(r)
 }
-  
